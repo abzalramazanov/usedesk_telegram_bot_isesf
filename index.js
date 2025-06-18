@@ -5,9 +5,10 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Telegram bot config (TS - Payda)
+// Telegram bot config (DevTeam > Support)
 const TELEGRAM_BOT_TOKEN = "7321576020:AAEt-579ibyc5X1BOEQOymyLQ4Sil4pR1tU";
-const TELEGRAM_CHAT_ID = "-1002876052091"; // TS - Payda
+const TELEGRAM_CHAT_ID = "-1001517811601"; // DevTeam
+const TELEGRAM_THREAD_ID = 8282; // Topic "Support"
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
 app.get("/send", async (req, res) => {
@@ -27,11 +28,13 @@ app.get("/send", async (req, res) => {
   try {
     const response = await axios.post(TELEGRAM_API_URL, {
       chat_id: TELEGRAM_CHAT_ID,
-      text: text
+      message_thread_id: TELEGRAM_THREAD_ID,
+      text: text,
+      disable_web_page_preview: true
     });
 
     console.log("✅ Отправлено в Telegram:", response.data);
-    res.status(200).send("✅ Улетело в телегу");
+    res.status(200).send("✅ Улетело в топик DevTeam/Support");
   } catch (error) {
     console.error("❌ Ошибка при отправке:", error.response?.data || error.message);
     res.status(500).send("❌ Ошибка при отправке в Telegram");
