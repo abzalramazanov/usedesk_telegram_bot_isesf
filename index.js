@@ -1,87 +1,85 @@
-const express = require("express");
-const axios = require("axios");
+import express from "express";
+import axios from "axios";
+
 const app = express();
-
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-const TELEGRAM_BOT_TOKEN = "7321576020:AAEt-579ibyc5X1BOEQOymyLQ4Sil4pR1tU";
-const TELEGRAM_CHAT_ID = "-1002876052091";
-const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+const TELEGRAM_TOKEN = "7321576020:AAEt-579ibyc5X1BOEQOymyLQ4Sil4pR1tU";
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
+const CHAT_ID = -1002876052091; // TS - Payda
+
 const USEDESK_TOKEN = "12ff4f2af60aee0fe6869cec6e2c8401df7980b7";
 
-// Сохраняем message_id -> ticket_id
+// Карта для хранения связи message_id ↔ ticket_id
 const messageMap = new Map();
 
-// 1. Получаем запрос от UseDesk и отправляем в Telegram
+// Отправка сообщения в Telegram
 app.get("/send", async (req, res) => {
   const { client_name, ticket_id } = req.query;
 
-  console.log("🔥 Новый запрос от UseDesk:");
-  console.log("🔸 Query:", req.query);
-
   if (!client_name || !ticket_id) {
-    return res.status(400).send("❌ Не хватает параметров client_name или ticket_id");
+    return res.status(400).send("Missing client_name or ticket_id");
   }
 
   const text = `👤 ${client_name}\n📝 Неизвестный статус, @joeskar чекни плз.\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
 
   try {
-    const tgRes = await axios.post(TELEGRAM_API_URL, {
-      chat_id: TELEGRAM_CHAT_ID,
+    const response = await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: CHAT_ID,
       text,
-      disable_web_page_preview: true
+      link_preview_options: { is_disabled: true }
     });
 
-    const sentMessageId = tgRes.data.result.message_id;
-    messageMap.set(sentMessageId, ticket_id);
+    const message_id = response.data.result.message_id;
+    messageMap.set(message_id, ticket_id); // Сохраняем для обработки ответов
 
-    console.log("✅ Отправлено в Telegram. message_id:", sentMessageId);
-    res.send("✅ Сообщение отправлено в Telegram");
-  } catch (err) {
-    console.error("❌ Ошибка отправки в Telegram:", err.response?.data || err.message);
-    res.status(500).send("❌ Ошибка отправки в Telegram");
+    console.log("✅ Отправлено в Telegram:", response.data);
+    res.send("OK");
+  } catch (error) {
+    console.error("❌ Ошибка при отправке в Telegram:", error.response?.data || error.message);
+    res.status(500).send("Ошибка при отправке в Telegram");
   }
 });
 
-// 2. Ловим входящие ответы от Telegram и пушим в UseDesk
+// Вебхук для Telegram (ловим ответы)
 app.post("/tg-hook", async (req, res) => {
   const update = req.body;
-  console.log("📥 Telegram update:", JSON.stringify(update, null, 2));
+
+  console.log("📥 Telegram update:\n", JSON.stringify(update, null, 2));
 
   const message = update?.message;
   const reply = message?.reply_to_message;
   const text = message?.text;
 
   if (reply && reply.message_id && text) {
-    const ticket_id = messageMap.get(reply.message_id);
+    const original_ticket_id = messageMap.get(reply.message_id);
+    const cleanTicketId = original_ticket_id?.toString().replace(/[^0-9]/g, "");
 
-    if (ticket_id) {
-      try {
-        // 2.1. Обновляем статус тикета на "1"
-        await axios.post("https://api.usedesk.ru/update/ticket", {
-          api_token: USEDESK_TOKEN,
-          ticket_id,
-          status: 1
-        });
+    if (!cleanTicketId) return res.send("ticket_id not found");
 
-        console.log(`🔄 Статус тикета ${ticket_id} обновлён.`);
+    console.log(`💬 Ответ на сообщение бота от: ${message.from.username}`);
+    console.log(`💬 Текст: ${text}`);
 
-        // 2.2. Добавляем комментарий
-        await axios.post("https://api.usedesk.ru/create/comment", {
-          api_token: USEDESK_TOKEN,
-          ticket_id,
-          message: text,
-          private_comment: true,
-          private: "private"
-        });
+    try {
+      // Обновить статус тикета
+      await axios.post("https://api.usedesk.ru/update/ticket", {
+        api_token: USEDESK_TOKEN,
+        ticket_id: cleanTicketId,
+        status: 1
+      });
 
-        console.log(`📝 Приватный комментарий добавлен в тикет ${ticket_id}`);
-      } catch (err) {
-        console.error("❌ Ошибка при работе с UseDesk API:", err.response?.data || err.message);
-      }
-    } else {
-      console.log("⚠️ Ответ не на наше сообщение или не нашли ticket_id.");
+      // Добавить приватный комментарий
+      await axios.post("https://api.usedesk.ru/create/comment", {
+        api_token: USEDESK_TOKEN,
+        ticket_id: cleanTicketId,
+        message: text,
+        private_comment: true,
+        private: "private"
+      });
+
+      console.log("✅ UseDesk обновлён");
+    } catch (err) {
+      console.error("❌ Ошибка при работе с UseDesk API:", err.response?.data || err.message);
     }
   }
 
@@ -89,6 +87,6 @@ app.post("/tg-hook", async (req, res) => {
 });
 
 // Старт сервера
-app.listen(process.env.PORT || 3000, () => {
-  console.log("🚀 Сервер запущен и слушает порт 3000");
+app.listen(3000, () => {
+  console.log("🚀 Server running on http://localhost:3000");
 });
