@@ -23,7 +23,7 @@ app.get('/send', async (req, res) => {
     return res.status(400).send('Missing required params');
   }
 
-const cleanStatus = status_text.replace(/@\\S+/, '').trim();
+const cleanStatus = status_text.replace(/@\S+\s*/, '').trim();
 const text = `👤 ${client_name}\n📝 @joeskar чекни плз, "${cleanStatus}"\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
 
   const telegramUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
