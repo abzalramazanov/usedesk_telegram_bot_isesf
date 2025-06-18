@@ -1,83 +1,104 @@
-import express from "express";
-import axios from "axios";
+import express from 'express';
+import fetch from 'node-fetch';
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Telegram config
+const TELEGRAM_BOT_TOKEN = '7321576020:AAEt-579ibyc5X1BOEQOymyLQ4Sil4pR1tU';
+const TELEGRAM_CHAT_ID = '-1002876052091'; // TS - Payda
+
+// UseDesk config
+const USEDESK_TOKEN = '12ff4f2af60aee0fe6869cec6e2c8401df7980b7';
+
+// Парсим Telegram updates (для получения ответов)
 app.use(express.json());
 
-const TELEGRAM_BOT_TOKEN = "7321576020:AAEt-579ibyc5X1BOEQOymyLQ4Sil4pR1tU";
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-const CHAT_ID = -1002876052091; // TS - Payda
-const USEDESK_TOKEN = "12ff4f2af60aee0fe6869cec6e2c8401df7980b7";
+let sentMessages = {}; // { message_id: ticket_id }
 
-// Мапа для сопоставления message_id и ticket_id
-const messageMap = new Map();
-
-app.get("/send", async (req, res) => {
+app.get('/send', async (req, res) => {
   const { client_name, ticket_id, status_text } = req.query;
 
-  if (!client_name || !ticket_id) {
-    return res.status(400).send("Missing client_name or ticket_id");
+  if (!client_name || !ticket_id || !status_text) {
+    return res.status(400).send('Missing required params');
   }
 
-  const status = status_text || "Неизвестный статус";
-  const text = `👤 ${client_name}
-📝 ${status}, @joeskar чекни плз.
-🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
+  const text = `👤 ${client_name}\n📝 @joeskar чекни плз, "${status_text}"\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
+
+  const telegramUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
   try {
-    const response = await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text,
-      link_preview_options: { is_disabled: true }
+    const response = await fetch(telegramUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text,
+        link_preview_options: { is_disabled: true }
+      })
     });
 
-    const message_id = response.data.result.message_id;
-    messageMap.set(message_id, ticket_id);
-    res.send("✅ Сообщение отправлено");
-  } catch (error) {
-    res.status(500).send("❌ Ошибка при отправке в Telegram");
-  }
-});
+    const result = await response.json();
+    console.log('✅ Отправлено в Telegram:', result);
 
-app.post("/tg-hook", async (req, res) => {
-  const msg = req.body?.message;
-  const reply = msg?.reply_to_message;
-  const text = msg?.text;
+    if (result.ok) {
+      sentMessages[result.result.message_id] = ticket_id;
+    }
 
-  if (!reply || !text) return res.send("ok");
-
-  const ticket_id_raw = messageMap.get(reply.message_id);
-  const ticket_id = ticket_id_raw?.toString().replace(/[^0-9]/g, "");
-
-  if (!ticket_id) return res.send("ok");
-
-  try {
-    await axios.post("https://api.usedesk.ru/update/ticket", {
-      api_token: USEDESK_TOKEN,
-      ticket_id,
-      status: 1
-    });
-
-    await axios.post("https://api.usedesk.ru/create/comment", {
-      api_token: USEDESK_TOKEN,
-      ticket_id,
-      message: text,
-      private_comment: true,
-      private: "private"
-    });
-
-    await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text: "✅ Открыл тикет, спасибо!",
-      reply_to_message_id: msg.message_id
-    });
+    res.send('OK');
   } catch (err) {
-    // пропускаем ошибки
+    console.error('❌ Ошибка при отправке в Telegram:', err);
+    res.status(500).send('Ошибка');
   }
-
-  res.send("ok");
 });
 
-app.listen(3000, () => {
-  console.log("🚀 Server started");
+app.post(`/`, async (req, res) => {
+  const update = req.body;
+  console.log('📥 Telegram update:\n', JSON.stringify(update, null, 2));
+
+  try {
+    const message = update?.message;
+    const reply = message?.reply_to_message;
+
+    if (reply && sentMessages[reply.message_id]) {
+      const ticket_id = sentMessages[reply.message_id];
+      const user_reply = message.text;
+
+      // 1. Закрываем тикет
+      await fetch('https://api.usedesk.ru/update/ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_token: USEDESK_TOKEN,
+          ticket_id,
+          status: 1
+        })
+      });
+
+      // 2. Добавляем приватный коммент
+      await fetch('https://api.usedesk.ru/create/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_token: USEDESK_TOKEN,
+          ticket_id,
+          message: user_reply,
+          private_comment: true,
+          private: true
+        })
+      });
+
+      console.log(`💬 Ответ на сообщение бота от: ${message.from.username}`);
+      console.log(`💬 Текст: ${user_reply}`);
+    }
+
+    res.send('ok');
+  } catch (err) {
+    console.error('❌ Ошибка при обработке update:', err);
+    res.status(500).send('Ошибка');
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Сервер запущен на порту ${PORT}`);
 });
