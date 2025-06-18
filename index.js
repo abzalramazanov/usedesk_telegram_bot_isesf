@@ -22,11 +22,12 @@ app.get("/send", async (req, res) => {
   const text = `👤 ${client_name}\n📝 Неизвестный статус, @joeskar чекни плз.\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
 
   try {
-const tgRes = await axios.post(`${TELEGRAM_API}/sendMessage`, {
+await axios.post(`${TELEGRAM_API}/sendMessage`, {
   chat_id: CHAT_ID,
-  text,
+  text: text,
   link_preview_options: { is_disabled: true }
 });
+
 
     const message_id = tgRes.data.result.message_id;
     messageMap.set(message_id, ticket_id);
