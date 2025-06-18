@@ -85,6 +85,13 @@ app.post("/tg-hook", async (req, res) => {
 
   res.send("ok");
 });
+// Ответить в Telegram на это сообщение
+await axios.post(`${TELEGRAM_API}/sendMessage`, {
+  chat_id: CHAT_ID,
+  text: "✅ Открыл тикет, спасибо!",
+  reply_to_message_id: message.message_id
+});
+
 
 // Старт сервера
 app.listen(3000, () => {
