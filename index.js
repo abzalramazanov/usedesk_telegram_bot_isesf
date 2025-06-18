@@ -6,7 +6,7 @@ app.use(express.json());
 
 const TELEGRAM_TOKEN = "7321576020:AAEt-579ibyc5X1BOEQOymyLQ4Sil4pR1tU";
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
-const CHAT_ID = -1001517811601; // DevTeam (форум)
+const CHAT_ID = -1002876052091; // TS - Payda
 const USEDESK_TOKEN = "12ff4f2af60aee0fe6869cec6e2c8401df7980b7";
 
 // Для сопоставления message_id и ticket_id
