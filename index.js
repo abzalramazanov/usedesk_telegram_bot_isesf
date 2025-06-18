@@ -4,17 +4,18 @@ import fetch from 'node-fetch';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Telegram config
 const TELEGRAM_BOT_TOKEN = '7321576020:AAEt-579ibyc5X1BOEQOymyLQ4Sil4pR1tU';
-const TELEGRAM_CHAT_ID = '-1002876052091'; // TS - Payda
-
-// UseDesk config
+const TELEGRAM_CHAT_ID = '-1001517811601'; // DevTeam
+const TELEGRAM_TOPIC_ID = 8282; // Topic: Support
 const USEDESK_TOKEN = '12ff4f2af60aee0fe6869cec6e2c8401df7980b7';
 
-// Парсим Telegram updates (для получения ответов)
 app.use(express.json());
 
 let sentMessages = {}; // { message_id: ticket_id }
+
+function stripHTML(html) {
+  return html.replace(/<[^>]*>?/gm, '').trim();
+}
 
 app.get('/send', async (req, res) => {
   const { client_name, ticket_id, status_text } = req.query;
@@ -23,17 +24,18 @@ app.get('/send', async (req, res) => {
     return res.status(400).send('Missing required params');
   }
 
-const cleanStatus = status_text.replace(/@\S+\s*/, '').trim();
-const text = `👤 ${client_name}\n📝 @joeskar чекни плз, "${cleanStatus}"\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
+  const raw = status_text.replace(/@\S+\s*/, '').trim();
+  const cleanStatus = stripHTML(raw);
 
-  const telegramUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const text = `👤 ${client_name}\n📝 @joeskar чекни плз, "${cleanStatus}"\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
 
   try {
-    const response = await fetch(telegramUrl, {
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: TELEGRAM_CHAT_ID,
+        message_thread_id: TELEGRAM_TOPIC_ID,
         text,
         link_preview_options: { is_disabled: true }
       })
@@ -53,19 +55,16 @@ const text = `👤 ${client_name}\n📝 @joeskar чекни плз, "${cleanStat
   }
 });
 
-app.post(`/`, async (req, res) => {
+app.post('/', async (req, res) => {
   const update = req.body;
-  console.log('📥 Telegram update:\n', JSON.stringify(update, null, 2));
+  const message = update?.message;
+  const reply = message?.reply_to_message;
 
-  try {
-    const message = update?.message;
-    const reply = message?.reply_to_message;
+  if (reply && sentMessages[reply.message_id]) {
+    const ticket_id = sentMessages[reply.message_id];
+    const user_reply = message.text;
 
-    if (reply && sentMessages[reply.message_id]) {
-      const ticket_id = sentMessages[reply.message_id];
-      const user_reply = message.text;
-
-      // 1. Закрываем тикет
+    try {
       await fetch('https://api.usedesk.ru/update/ticket', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,7 +75,6 @@ app.post(`/`, async (req, res) => {
         })
       });
 
-      // 2. Добавляем приватный коммент
       await fetch('https://api.usedesk.ru/create/comment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -89,15 +87,24 @@ app.post(`/`, async (req, res) => {
         })
       });
 
-      console.log(`💬 Ответ на сообщение бота от: ${message.from.username}`);
-      console.log(`💬 Текст: ${user_reply}`);
-    }
+      await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          message_thread_id: TELEGRAM_TOPIC_ID,
+          text: "✅ Открыл тикет, спасибо!",
+          reply_to_message_id: message.message_id
+        })
+      });
 
-    res.send('ok');
-  } catch (err) {
-    console.error('❌ Ошибка при обработке update:', err);
-    res.status(500).send('Ошибка');
+      console.log(`💬 Ответ на сообщение бота от: ${message.from.username}`);
+    } catch (err) {
+      console.error('❌ Ошибка в UseDesk:', err);
+    }
   }
+
+  res.send('ok');
 });
 
 app.listen(PORT, () => {
