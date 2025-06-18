@@ -5,19 +5,17 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Telegram bot config (DevTeam > Support)
+// Telegram config: TS - Payda
 const TELEGRAM_BOT_TOKEN = "7321576020:AAEt-579ibyc5X1BOEQOymyLQ4Sil4pR1tU";
-const TELEGRAM_CHAT_ID = "-1001517811601"; // DevTeam
-const TELEGRAM_THREAD_ID = 8282; // Topic "Support"
+const TELEGRAM_CHAT_ID = "-1002876052091";
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
+// 1. UseDesk → /send → Telegram
 app.get("/send", async (req, res) => {
   const { client_name, ticket_id } = req.query;
 
   console.log("🔥 Новый запрос от UseDesk:");
-  console.log("🔸 Метод:", req.method);
   console.log("🔸 Query:", req.query);
-  console.log("🔸 Body:", req.body);
 
   if (!client_name || !ticket_id) {
     return res.status(400).send("❌ Не хватает параметров client_name или ticket_id");
@@ -28,19 +26,38 @@ app.get("/send", async (req, res) => {
   try {
     const response = await axios.post(TELEGRAM_API_URL, {
       chat_id: TELEGRAM_CHAT_ID,
-      message_thread_id: TELEGRAM_THREAD_ID,
       text: text,
       disable_web_page_preview: true
     });
 
     console.log("✅ Отправлено в Telegram:", response.data);
-    res.status(200).send("✅ Улетело в топик DevTeam/Support");
+    res.status(200).send("✅ Улетело в TS - Payda");
   } catch (error) {
-    console.error("❌ Ошибка при отправке:", error.response?.data || error.message);
+    console.error("❌ Ошибка при отправке в Telegram:", error.response?.data || error.message);
     res.status(500).send("❌ Ошибка при отправке в Telegram");
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("🚀 Сервер прокладка запущен");
+// 2. Telegram Webhook → /tg-hook → логируем входящие
+app.post("/tg-hook", (req, res) => {
+  const update = req.body;
+  console.log("📥 Telegram update:");
+  console.dir(update, { depth: null });
+
+  if (update.message?.reply_to_message) {
+    console.log("💬 Ответ на сообщение бота от:", update.message.from?.username || update.message.from?.first_name);
+    console.log("💬 Текст:", update.message.text);
+  }
+
+  if (update.message?.text?.includes("@payda_ifesf_bot")) {
+    console.log("📌 Бота упомянули:", update.message.text);
+  }
+
+  res.send("ok");
+});
+
+// 3. Запуск сервера
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Сервер слушает на порту ${PORT}`);
 });
