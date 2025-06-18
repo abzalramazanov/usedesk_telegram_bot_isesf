@@ -6,7 +6,8 @@ app.use(express.json());
 
 const TELEGRAM_TOKEN = "7321576020:AAEt-579ibyc5X1BOEQOymyLQ4Sil4pR1tU";
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
-const CHAT_ID = -1002876052091; // TS - Payda
+const CHAT_ID = -1001517811601; // DevTeam (форум)
+const THREAD_ID = 8282; // Support topic внутри DevTeam
 const USEDESK_TOKEN = "12ff4f2af60aee0fe6869cec6e2c8401df7980b7";
 
 // Для сопоставления message_id и ticket_id
@@ -22,11 +23,12 @@ app.get("/send", async (req, res) => {
   const text = `👤 ${client_name}\n📝 Неизвестный статус, @joeskar чекни плз.\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
 
   try {
-    const tgRes = await axios.post(`${TELEGRAM_API}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text,
-      link_preview_options: { is_disabled: true }
-    });
+const tgRes = await axios.post(`${TELEGRAM_API}/sendMessage`, {
+  chat_id: CHAT_ID,
+  message_thread_id: THREAD_ID,
+  text,
+  link_preview_options: { is_disabled: true }
+});
 
     const message_id = tgRes.data.result.message_id;
     messageMap.set(message_id, ticket_id);
