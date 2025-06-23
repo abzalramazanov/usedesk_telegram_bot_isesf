@@ -67,7 +67,7 @@ app.get('/send', async (req, res) => {
     } catch (err) {
       console.error('❌ Ошибка при отправке в Telegram:', err);
     }
-  }, 5000); // ⏱ Ждём 5 секунд после ping-а
+  }, 20000); // ⏱ Ждём 5 секунд после ping-а
 });
 
 // Ответы из Telegram → UseDesk
