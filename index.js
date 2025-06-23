@@ -17,33 +17,38 @@ function stripHTML(html) {
   return html.replace(/<[^>]*>?/gm, '').trim();
 }
 
-// Ping endpoint (на случай, если отдельно понадобится)
+// 🔁 Пинг для проверки работы
 app.get('/ping', (req, res) => {
-  console.log(`👋 Ping получен в ${new Date().toISOString()}`);
-  res.send('✅ Сервер проснулся');
+  const now = new Date().toISOString();
+  console.log(`👋 Ping получен в ${now}`);
+  res.send(`✅ Сервер проснулся в ${now}`);
 });
 
-// /send — теперь с авто-пингом и задержкой
+// 🚀 /send с авто-пингом и логами
 app.get('/send', async (req, res) => {
   const { client_name, ticket_id, status_text } = req.query;
 
   if (!client_name || !ticket_id || !status_text) {
+    console.warn('❗️Не хватает параметров в /send');
     return res.status(400).send('Missing required params');
   }
 
-  res.send('⏳ Пингуем сервер и ждём 5 секунд перед отправкой...');
+  console.log(`📩 Получен запрос на /send: ${client_name}, тикет ${ticket_id}`);
+  res.send('⏳ Пингуем себя и ждём 15 секунд перед отправкой...');
 
-  // 🟢 Пингуем свой же endpoint
   try {
+    console.log('📡 Пингуем /ping локально...');
     await fetch(`http://localhost:${PORT}/ping`);
   } catch (e) {
-    console.warn('⚠️ Не удалось сделать ping локально, но продолжаем...');
+    console.warn('⚠️ Локальный ping не сработал, продолжаем без него...');
   }
 
+  console.log('⏱ Таймер 15 секунд перед отправкой...');
   setTimeout(async () => {
+    console.log('⚙️ Запускаем отправку в Telegram...');
+
     const raw = status_text.replace(/@\S+\s*/, '').trim();
     const cleanStatus = stripHTML(raw);
-
     const text = `👤 ${client_name}\n📝 @joeskar чекни плз, "${cleanStatus}"\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
 
     try {
@@ -59,18 +64,20 @@ app.get('/send', async (req, res) => {
       });
 
       const result = await response.json();
-      console.log('✅ Отправлено в Telegram:', result);
+      console.log('✅ Результат отправки в Telegram:', result);
 
       if (result.ok) {
         sentMessages[result.result.message_id] = ticket_id;
+      } else {
+        console.error('❌ Telegram вернул ошибку:', result.description);
       }
     } catch (err) {
-      console.error('❌ Ошибка при отправке в Telegram:', err);
+      console.error('❌ Ошибка при fetch в Telegram:', err);
     }
-  }, 20000); // ⏱ Ждём 5 секунд после ping-а
+  }, 15000); // 15 секунд пауза
 });
 
-// Ответы из Telegram → UseDesk
+// 📥 Ответы из Telegram → UseDesk
 app.post('/', async (req, res) => {
   const update = req.body;
   const message = update?.message;
@@ -79,6 +86,8 @@ app.post('/', async (req, res) => {
   if (reply && sentMessages[reply.message_id]) {
     const ticket_id = sentMessages[reply.message_id];
     const user_reply = message.text;
+
+    console.log(`📬 Ответ на сообщение ${reply.message_id}, тикет ${ticket_id}`);
 
     try {
       await fetch('https://api.usedesk.ru/update/ticket', {
@@ -114,15 +123,16 @@ app.post('/', async (req, res) => {
         })
       });
 
-      console.log(`💬 Ответ на сообщение бота от: ${message.from.username}`);
+      console.log(`💬 Комментарий добавлен, тикет обновлён. Ответ от: @${message.from?.username || 'неизвестно'}`);
     } catch (err) {
-      console.error('❌ Ошибка в UseDesk:', err);
+      console.error('❌ Ошибка при обработке ответа из Telegram:', err);
     }
   }
 
   res.send('ok');
 });
 
+// 🌐 Старт сервера
 app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);
 });
