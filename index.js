@@ -17,6 +17,13 @@ function stripHTML(html) {
   return html.replace(/<[^>]*>?/gm, '').trim();
 }
 
+// Ping endpoint (на случай, если отдельно понадобится)
+app.get('/ping', (req, res) => {
+  console.log(`👋 Ping получен в ${new Date().toISOString()}`);
+  res.send('✅ Сервер проснулся');
+});
+
+// /send — теперь с авто-пингом и задержкой
 app.get('/send', async (req, res) => {
   const { client_name, ticket_id, status_text } = req.query;
 
@@ -24,37 +31,46 @@ app.get('/send', async (req, res) => {
     return res.status(400).send('Missing required params');
   }
 
-  const raw = status_text.replace(/@\S+\s*/, '').trim();
-  const cleanStatus = stripHTML(raw);
+  res.send('⏳ Пингуем сервер и ждём 5 секунд перед отправкой...');
 
-  const text = `👤 ${client_name}\n📝 @joeskar чекни плз, "${cleanStatus}"\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
-
+  // 🟢 Пингуем свой же endpoint
   try {
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        message_thread_id: TELEGRAM_TOPIC_ID,
-        text,
-        link_preview_options: { is_disabled: true }
-      })
-    });
-
-    const result = await response.json();
-    console.log('✅ Отправлено в Telegram:', result);
-
-    if (result.ok) {
-      sentMessages[result.result.message_id] = ticket_id;
-    }
-
-    res.send('OK');
-  } catch (err) {
-    console.error('❌ Ошибка при отправке в Telegram:', err);
-    res.status(500).send('Ошибка');
+    await fetch(`http://localhost:${PORT}/ping`);
+  } catch (e) {
+    console.warn('⚠️ Не удалось сделать ping локально, но продолжаем...');
   }
+
+  setTimeout(async () => {
+    const raw = status_text.replace(/@\S+\s*/, '').trim();
+    const cleanStatus = stripHTML(raw);
+
+    const text = `👤 ${client_name}\n📝 @joeskar чекни плз, "${cleanStatus}"\n🔗 https://secure.usedesk.ru/tickets/${ticket_id}`;
+
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          message_thread_id: TELEGRAM_TOPIC_ID,
+          text,
+          link_preview_options: { is_disabled: true }
+        })
+      });
+
+      const result = await response.json();
+      console.log('✅ Отправлено в Telegram:', result);
+
+      if (result.ok) {
+        sentMessages[result.result.message_id] = ticket_id;
+      }
+    } catch (err) {
+      console.error('❌ Ошибка при отправке в Telegram:', err);
+    }
+  }, 5000); // ⏱ Ждём 5 секунд после ping-а
 });
 
+// Ответы из Telegram → UseDesk
 app.post('/', async (req, res) => {
   const update = req.body;
   const message = update?.message;
